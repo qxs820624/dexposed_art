@@ -48,11 +48,11 @@ namespace art {
         }
 
         LOG(INFO) << "dexposed: now initializing, Found Dexposed class " << DEXPOSED_CLASS;
-        // if (register_com_taobao_android_dexposed_DexposedBridge(env) != JNI_OK) {
-        //     LOG(ERROR) << "dexposed: Could not register natives for " << DEXPOSED_CLASS;
-        //     env->ExceptionClear();
-        //     return false;
-        // }
+        if (register_com_taobao_android_dexposed_DexposedBridge(env) != JNI_OK) {
+            LOG(ERROR) << "dexposed: Could not register natives for " << DEXPOSED_CLASS;
+            env->ExceptionClear();
+            return false;
+        }
 
         return true;
     }
@@ -82,6 +82,7 @@ namespace art {
         }
 
         int keepLoadingDexposed = dexposedOnVmCreated(env, NULL);
+        LOG(INFO) << "JNI_OnLoad ---";
         if(keepLoadingDexposed)
             initNative(env, NULL);
 
@@ -227,7 +228,7 @@ namespace art {
     }
 
 
-    extern "C" void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(
+    void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(
             JNIEnv *env, jclass, jobject java_method, jobject, jint,
             jobject additional_info) {
         ScopedObjectAccess soa(env);
@@ -301,6 +302,7 @@ namespace art {
             JNIEnv *env, jclass, jobject java_method, jint, jobject, jobject,
             jobject thiz, jobject args)
     SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+        LOG(INFO) << "invokeOriginalMethodNative ---";
 
         ScopedObjectAccess soa(env);
         art::Thread *self = art::Thread::Current();
@@ -378,6 +380,19 @@ namespace art {
             };
 
     static int register_com_taobao_android_dexposed_DexposedBridge(JNIEnv *env) {
+        LOG(INFO) << "registering native methods";
+        #ifdef __arm__
+        LOG(INFO) << "runing on arm cpu";
+        #endif
+        #ifdef __aarch64__
+        LOG(INFO) << "runing on arm64 cpu";
+        #endif
+        #ifdef __i386__
+        LOG(INFO) << "runing on x86 cpu";
+        #endif
+        #ifdef __x86_64__
+        LOG(INFO) << "runing on x86_64 cpu";
+        #endif
         return env->RegisterNatives(dexposed_class, dexposedMethods,
                                     sizeof(dexposedMethods) / sizeof(dexposedMethods[0]));
     }
