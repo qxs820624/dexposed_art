@@ -10,9 +10,8 @@
 #include "common_throws.h"
 #include "dex_file-inl.h"
 #include "jni_internal.h"
-#include "method_helper-inl.h"
-#include "mirror/art_field-inl.h"
-#include "mirror/art_method-inl.h"
+#include "art_field-inl.h"
+#include "art_method-inl.h"
 #include "mirror/class-inl.h"
 #include "mirror/class.h"
 #include "mirror/object_array-inl.h"
@@ -201,8 +200,7 @@ namespace art {
         static void ThrowIllegalPrimitiveArgumentException(const char *expected,
                                                            const char *found_descriptor)
         SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
-            ThrowIllegalArgumentException(nullptr,
-                                          StringPrintf("Invalid primitive conversion from %s to %s",
+            ThrowIllegalArgumentException(StringPrintf("Invalid primitive conversion from %s to %s",
                                                        expected,
                                                        PrettyDescriptor(
                                                                found_descriptor).c_str()).c_str());
@@ -211,9 +209,9 @@ namespace art {
         bool BuildArgArrayFromObjectArray(const ScopedObjectAccessAlreadyRunnable &soa,
                                           mirror::Object *receiver,
                                           mirror::ObjectArray<mirror::Object> *args,
-                                          MethodHelper &mh)
+                                          ArtMethod *method)
         SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
-            const DexFile::TypeList *classes = mh.GetMethod()->GetParameterTypeList();
+            const DexFile::TypeList *classes = method->GetParameterTypeList();
             // Set receiver if non-null (method is not static)
             if (receiver != nullptr) {
                 Append(receiver);
@@ -223,12 +221,11 @@ namespace art {
                 if (((shorty_[i] == 'L') && (arg != nullptr)) ||
                     ((arg == nullptr && shorty_[i] != 'L'))) {
                     mirror::Class *dst_class =
-                            mh.GetClassFromTypeIdx(classes->GetTypeItem(args_offset).type_idx_);
+                            method->GetClassFromTypeIndex(classes->GetTypeItem(args_offset).type_idx_, true);
                     if (UNLIKELY(arg == nullptr || !arg->InstanceOf(dst_class))) {
-                        ThrowIllegalArgumentException(nullptr,
-                                                      StringPrintf(
+                        ThrowIllegalArgumentException(StringPrintf(
                                                               "method %s argument %zd has type %s, got %s",
-                                                              PrettyMethod(mh.GetMethod(),
+                                                              PrettyMethod(method,
                                                                            false).c_str(),
                                                               args_offset +
                                                               1,  // Humans don't count from 0.
@@ -240,13 +237,13 @@ namespace art {
 
 #define DO_FIRST_ARG(match_descriptor, get_fn, append) { \
           if (LIKELY(arg != nullptr && arg->GetClass<>()->DescriptorEquals(match_descriptor))) { \
-            mirror::ArtField* primitive_field = arg->GetClass()->GetIFields()->Get(0); \
+            ArtField* primitive_field = arg->GetClass()->GetIFields(); \
             append(primitive_field-> get_fn(arg));
 
 #define DO_ARG(match_descriptor, get_fn, append) \
           } else if (LIKELY(arg != nullptr && \
                             arg->GetClass<>()->DescriptorEquals(match_descriptor))) { \
-            mirror::ArtField* primitive_field = arg->GetClass()->GetIFields()->Get(0); \
+            ArtField* primitive_field = arg->GetClass()->GetIFields(); \
             append(primitive_field-> get_fn(arg));
 
 #define DO_FAIL(expected) \
@@ -256,9 +253,8 @@ namespace art {
               ThrowIllegalPrimitiveArgumentException(expected, \
                                                      arg->GetClass<>()->GetDescriptor(&temp)); \
             } else { \
-              ThrowIllegalArgumentException(nullptr, \
-                  StringPrintf("method %s argument %zd has type %s, got %s", \
-                      PrettyMethod(mh.GetMethod(), false).c_str(), \
+              ThrowIllegalArgumentException(StringPrintf("method %s argument %zd has type %s, got %s", \
+                      PrettyMethod(method, false).c_str(), \
                       args_offset + 1, \
                       expected, \
                       PrettyTypeOf(arg).c_str()).c_str()); \

@@ -31,6 +31,8 @@
 #include "quick_argument_visitor.h"
 #include "ArgArray.h"
 
+#define LOGLOG() LOG(INFO) << __FILE__ << ":" << __LINE__
+
 namespace art {
 
     jclass dexposed_class = NULL;
@@ -69,6 +71,7 @@ namespace art {
             env->ExceptionClear();
             return false;
         }
+        LOGLOG();
         return true;
     }
 
@@ -159,14 +162,13 @@ namespace art {
                 return zero;
             }
             StackHandleScope<1> hs(soa.Self());
-            MethodHelper mh_method(hs.NewHandle(soa.DecodeMethod(method)));
+            auto *proxy = soa.DecodeMethod(method)->GetInterfaceMethodIfProxy(sizeof(void*));
             // This can cause thread suspension.
             mirror::Object *rcvr = soa.Decode<mirror::Object *>(rcvr_jobj);
-            ThrowLocation throw_location(rcvr, mh_method.GetMethod(), -1);
             mirror::Object *result_ref = soa.Decode<mirror::Object *>(result);
-            mirror::Class *result_type = mh_method.GetReturnType();
+            mirror::Class *result_type = proxy->GetReturnType();
             JValue result_unboxed;
-            if (!UnboxPrimitiveForResult(throw_location, result_ref, result_type,
+            if (!UnboxPrimitiveForResult(result_ref, result_type,
                                          &result_unboxed)) {
                 DCHECK(soa.Self()->IsExceptionPending());
                 return zero;
@@ -181,7 +183,7 @@ namespace art {
     // field within the proxy object, which will box the primitive arguments and deal with error cases.
     extern "C" uint64_t artQuickDexposedInvokeHandler(ArtMethod *proxy_method,
                                                       Object *receiver, Thread *self,
-                                                      StackReference<ArtMethod> *sp)
+                                                      ArtMethod **sp)
     SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
 
         const bool is_static = proxy_method->IsStatic();
@@ -194,8 +196,8 @@ namespace art {
                 "Adding to IRT proxy object arguments");
 
         // Register the top of the managed stack, making stack crawlable.
-        DCHECK_EQ(sp->AsMirrorPtr(), proxy_method) << PrettyMethod(proxy_method);
-        self->SetTopOfStack(sp, 0);
+        DCHECK_EQ(*sp, proxy_method) << PrettyMethod(proxy_method);
+        self->SetTopOfStack(sp);
 //		DCHECK_EQ(proxy_method->GetFrameSizeInBytes(),
 //				Runtime::Current()->GetCalleeSaveMethod(Runtime::kRefsAndArgs)->GetFrameSizeInBytes())
 //				<< PrettyMethod(proxy_method);
@@ -227,13 +229,15 @@ namespace art {
         return result.GetJ();
     }
 
-
-    void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(
+    static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(
             JNIEnv *env, jclass, jobject java_method, jobject, jint,
             jobject additional_info) {
+        LOGLOG();
         ScopedObjectAccess soa(env);
+        LOGLOG();
         art::Thread *self = art::Thread::Current();
 
+        LOGLOG();
         ArtMethod *art_method = ArtMethod::FromReflectedMethod(soa, java_method);
 
         LOG(INFO) << "dexposed: >>> hookMethodNative " << art_method << " " <<
@@ -244,12 +248,15 @@ namespace art {
             PrettyMethod(art_method);
             return;
         }
+        LOGLOG();
 
         // Create a backup of the ArtMethod object
-        ArtMethod *backup_method = down_cast<ArtMethod *>(art_method->Clone(soa.Self()));
+        ArtMethod *backup_method = new ArtMethod(*art_method, sizeof(void*));
+        LOGLOG();
         // Set private flag to avoid virtual table lookups during invocation
         backup_method->SetAccessFlags(
                 backup_method->GetAccessFlags() /*| kAccXposedOriginalMethod*/);
+        LOGLOG();
         // Create a Method/Constructor object for the backup ArtMethod object
         jobject reflect_method;
         if (art_method->IsConstructor()) {
@@ -257,47 +264,38 @@ namespace art {
         } else {
             reflect_method = env->AllocObject(WellKnownClasses::java_lang_reflect_Method);
         }
-        env->SetObjectField(reflect_method,
+        LOGLOG();
+        env->SetLongField(reflect_method,
                             WellKnownClasses::java_lang_reflect_AbstractMethod_artMethod,
-                            env->NewGlobalRef(soa.AddLocalReference<jobject>(backup_method)));
+                            (jlong)backup_method);
         // Save extra information in a separate structure, stored instead of the native method
         DexposedHookInfo *hookInfo = reinterpret_cast<DexposedHookInfo *>(calloc(1,
                                                                                  sizeof(DexposedHookInfo)));
+        LOGLOG();
         hookInfo->reflectedMethod = env->NewGlobalRef(reflect_method);
         hookInfo->additionalInfo = env->NewGlobalRef(additional_info);
         hookInfo->originalMethod = backup_method;
 
+        LOGLOG();
 #if PLATFORM_SDK_VERSION < 22
         art_method->SetNativeMethod(reinterpret_cast<uint8_t *>(hookInfo));
 #else
         art_method->SetEntryPointFromJni(reinterpret_cast<void *>(hookInfo));
 #endif
 
+        LOGLOG();
         art_method->SetEntryPointFromQuickCompiledCode((void *) art_quick_dexposed_invoke_handler);
 
         art_method->SetAccessFlags((art_method->GetAccessFlags() & ~kAccNative));
+        LOGLOG();
     }
 
     static bool dexposedIsHooked(ArtMethod *method) {
+        LOGLOG();
         return (method->GetEntryPointFromQuickCompiledCode())
                == (void *) art_quick_dexposed_invoke_handler;
     }
 
-/**
-* art call java method use this function;
-* http://blog.csdn.net/luoshengyang/article/details/40289405
-* static JValue InvokeWithVarArgs(const ScopedObjectAccess& soa, jobject obj,
-                    jmethodID mid, va_list args) SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
-  ArtMethod* method = soa.DecodeMethod(mid);
-  Object* receiver = method->IsStatic() ? NULL : soa.Decode<Object*>(obj);
-  MethodHelper mh(method);
-  JValue result;
-  ArgArray arg_array(mh.GetShorty(), mh.GetShortyLength());
-  arg_array.BuildArgArray(soa, receiver, args);
-  InvokeWithArgArray(soa, method, &arg_array, &result, mh.GetShorty()[0]);
-  return result;
-}
-*/
     extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(
             JNIEnv *env, jclass, jobject java_method, jint, jobject, jobject,
             jobject thiz, jobject args)
@@ -315,22 +313,24 @@ namespace art {
         }
         Object *receiver = art_method->IsStatic() ? NULL : soa.Decode<Object *>(thiz);
         StackHandleScope<1> hs(soa.Self());
-        MethodHelper mh(hs.NewHandle(art_method));
+        auto *proxy = art_method->GetInterfaceMethodIfProxy(sizeof(void*));
         mirror::ObjectArray<mirror::Object> *objectArray = soa.Decode<mirror::ObjectArray<mirror::Object> *>(
                 args);
-        ArgArray arg_array(mh.GetShorty(), mh.GetShortyLength());
-        arg_array.BuildArgArrayFromObjectArray(soa, receiver, objectArray, mh);
+        uint32_t arg_length = 0;
+        const char *arg_shorty = proxy->GetShorty(&arg_length);
+        ArgArray arg_array(arg_shorty, arg_length);
+        arg_array.BuildArgArrayFromObjectArray(soa, receiver, objectArray, art_method);
 
         JValue result;
         art_method->Invoke(self, arg_array.GetArray(), arg_array.GetNumBytes(), &result,
-                           mh.GetShorty());
-        if (mh.GetShorty()[0] == 'V')
+                           arg_shorty);
+        if (arg_shorty[0] == 'V')
             return nullptr;
-        else if (mh.GetShorty()[0] == 'L')
+        else if (arg_shorty[0] == 'L')
             return soa.AddLocalReference<jobject>(result.GetL());
         else
             return soa.AddLocalReference<jobject>(
-                    BoxPrimitive(Primitive::GetType(mh.GetShorty()[0]), result));
+                    BoxPrimitive(Primitive::GetType(arg_shorty[0]), result));
     }
 
     extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeSuperNative(
@@ -346,26 +346,28 @@ namespace art {
         ArtMethod *method = ArtMethod::FromReflectedMethod(soa, java_method);
 
 // Find the actual implementation of the virtual method.
-        ArtMethod *art_method = method->FindOverriddenMethod();
+        ArtMethod *art_method = method->FindOverriddenMethod(sizeof(void*));
 
         Object *receiver = art_method->IsStatic() ? NULL : soa.Decode<Object *>(thiz);
         StackHandleScope<1> hs(soa.Self());
-        MethodHelper mh(hs.NewHandle(art_method));
+        auto *proxy = art_method->GetInterfaceMethodIfProxy(sizeof(void*));
         mirror::ObjectArray<mirror::Object> *objectArray = soa.Decode<mirror::ObjectArray<mirror::Object> *>(
                 args);
-        ArgArray arg_array(mh.GetShorty(), mh.GetShortyLength());
-        arg_array.BuildArgArrayFromObjectArray(soa, receiver, objectArray, mh);
+        uint32_t arg_length = 0;
+        const char *arg_shorty = proxy->GetShorty(&arg_length);
+        ArgArray arg_array(arg_shorty, arg_length);
+        arg_array.BuildArgArrayFromObjectArray(soa, receiver, objectArray, art_method);
 
         JValue result;
         art_method->Invoke(self, arg_array.GetArray(), arg_array.GetNumBytes(), &result,
-                           mh.GetShorty());
-        if (mh.GetShorty()[0] == 'V')
+                           arg_shorty);
+        if (arg_shorty[0] == 'V')
             return nullptr;
-        else if (mh.GetShorty()[0] == 'L')
+        else if (arg_shorty[0] == 'L')
             return soa.AddLocalReference<jobject>(result.GetL());
         else
             return soa.AddLocalReference<jobject>(
-                    BoxPrimitive(Primitive::GetType(mh.GetShorty()[0]), result));
+                    BoxPrimitive(Primitive::GetType(arg_shorty[0]), result));
     }
 
     static const JNINativeMethod dexposedMethods[] =

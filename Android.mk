@@ -11,9 +11,7 @@ LOCAL_SRC_FILES_arm64 := art_quick_dexposed_invoke_handler.arm64.S
 LOCAL_SRC_FILES_x86 := art_quick_dexposed_invoke_handler.x86.S
 LOCAL_SRC_FILES_x86_64 := art_quick_dexposed_invoke_handler.x86_64.S
 
-LOCAL_LDFLAGS += -Wl,--no-warn-shared-textrel
-
-LOCAL_CPPFLAGS := -O0 -DNDEBUG
+LOCAL_CPPFLAGS := -O0 -DNDEBUG -DART_DEFAULT_GC_TYPE_IS_CMS=1
 
 LOCAL_CFLAGS += -std=c++0x -O0 -DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION) -Wno-unused-parameter -fPIC
 
@@ -24,8 +22,8 @@ LOCAL_C_INCLUDES := \
 	dalvik/ \
 	$(ART_C_INCLUDES) \
 	external/gtest/include \
-	external/valgrind/main/include \
-	external/valgrind/main
+	external/valgrind/include \
+	external/valgrind/
 
 ifneq (6.0, $(PLATFORM_VERSION))
 	include external/libcxx/libcxx.mk
@@ -44,10 +42,6 @@ LOCAL_SHARED_LIBRARIES := libutils liblog libart libc++ libcutils libdl
 
 LOCAL_MODULE_TAGS := optional
 
-ifeq (x86_64, $(TARGET_ARCH))
-	LOCAL_MULTILIB := 32
-else
-	LOCAL_MULTILIB := both
-endif
+LOCAL_MULTILIB := both
 
 include $(BUILD_SHARED_LIBRARY)

@@ -20,7 +20,7 @@
 #define DEXPOSED_H
 
 #include <jni.h>
-#include <mirror/art_method.h>
+#include <art_method.h>
 #include <mirror/object.h>
 #include <mirror/array.h>
 #include <mirror/class.h>
@@ -30,16 +30,13 @@
 #include <reflection.h>
 #include <runtime.h>
 #include <scoped_thread_state_change.h>
-#include <method_helper.h>
-#include <method_helper-inl.h>
 #include <handle.h>
 #include <util.h>
-#include <throw_location.h>
 #include <stack.h>
 #include <jni_internal.h>
 
-using art::mirror::ArtMethod;
-using art::mirror::EntryPointFromInterpreter;
+using art::ArtMethod;
+using art::EntryPointFromInterpreter;
 using art::mirror::Array;
 using art::mirror::ObjectArray;
 using art::mirror::Class;
@@ -58,11 +55,9 @@ using art::ScopedObjectAccessUnchecked;
 using art::ScopedObjectAccessAlreadyRunnable;
 using art::StackHandleScope;
 using art::Handle;
-using art::MethodHelper;
 using art::StackReference;
 using art::ClassLinker;
 using art::ScopedJniEnvLocalRefState;
-using art::ThrowLocation;
 
 #define DEXPOSED_CLASS "com/taobao/android/dexposed/DexposedBridge"
 #define DEXPOSED_CLASS_DOTS "com.taobao.android.dexposed.DexposedBridge"
@@ -74,7 +69,7 @@ namespace art {
     struct DexposedHookInfo {
         jobject reflectedMethod;
         jobject additionalInfo;
-        mirror::ArtMethod* originalMethod;
+        ArtMethod* originalMethod;
     };
 
     static bool dexposedIsHooked(ArtMethod* method);
