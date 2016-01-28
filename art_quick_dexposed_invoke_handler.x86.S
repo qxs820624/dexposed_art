@@ -1,4 +1,4 @@
-#include "asm_support_x86.S"
+#include "arch/x86/asm_support_x86.S"
 
 // For x86, the CFA is esp+4, the address above the pushed return address on the stack.
 
